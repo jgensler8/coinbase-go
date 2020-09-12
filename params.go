@@ -5,6 +5,16 @@ package coinbase
 // for a given request. Also included here are the return object structs returned by
 // specific API calls
 
+type Account struct {
+	ID             string `json:"id"`
+	Currency       string `json:"currency"`
+	Balance        string `json:"balance"`
+	Available      string `json:"available"`
+	Hold           string `json:"hold"`
+	ProfileID      string `json:"profile_id"`
+	TradingEnabled string `json:"trading_enabled"`
+}
+
 // Parameter Struct for GET /api/v1/addresses Requests
 type AddressesParams struct {
 	Page      int64  `json:"page,omitempty"`

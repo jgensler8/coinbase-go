@@ -3,9 +3,8 @@ package coinbase
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"time"
-
-	"github.com/fabioberger/coinbase-go/config"
 )
 
 // ClientOAuthAuthentication Struct implements the Authentication interface
@@ -13,7 +12,7 @@ import (
 // (i.e GetBalance())
 type clientOAuthAuthentication struct {
 	Tokens  *oauthTokens
-	BaseUrl string
+	BaseUrl *url.URL
 	Client  http.Client
 }
 
@@ -21,7 +20,7 @@ type clientOAuthAuthentication struct {
 func clientOAuth(tokens *oauthTokens) *clientOAuthAuthentication {
 	a := clientOAuthAuthentication{
 		Tokens:  tokens,
-		BaseUrl: config.BaseUrl,
+		BaseUrl: ProURL(false, URLTypeWebsite),
 		Client: http.Client{
 			Transport: &http.Transport{
 				Dial: dialTimeout,
@@ -33,7 +32,7 @@ func clientOAuth(tokens *oauthTokens) *clientOAuthAuthentication {
 
 // Client OAuth authentication requires us to attach an unexpired OAuth token to
 // the request header
-func (a clientOAuthAuthentication) authenticate(req *http.Request, endpoint string, params []byte) error {
+func (a clientOAuthAuthentication) authenticate(req *http.Request, method string, requestPath string, body []byte) error {
 	// Ensure tokens havent expired
 	if time.Now().UTC().Unix() > a.Tokens.ExpireTime {
 		return errors.New("The OAuth tokens are expired. Use refreshTokens to refresh them")
@@ -42,8 +41,8 @@ func (a clientOAuthAuthentication) authenticate(req *http.Request, endpoint stri
 	return nil
 }
 
-func (a clientOAuthAuthentication) getBaseUrl() string {
-	return a.BaseUrl
+func (a clientOAuthAuthentication) getBaseUrl() *url.URL {
+	return copyURL(a.BaseUrl)
 }
 
 func (a clientOAuthAuthentication) getClient() *http.Client {

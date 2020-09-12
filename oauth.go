@@ -38,7 +38,7 @@ func OAuthService(clientId string, clientSecret string, redirectUri string) (*OA
 // coinbase app authorization. The scope parameter includes the specific
 // permissions one wants to ask from the user
 func (o OAuth) CreateAuthorizeUrl(scope []string) string {
-	Url, _ := url.Parse("https://coinbase.com")
+	Url, _ := url.Parse(ProURL(false, URLTypeOAuth).String())
 	Url.Path += "/oauth/authorize"
 
 	parameters := url.Values{}

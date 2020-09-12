@@ -13,10 +13,10 @@ type Client struct {
 }
 
 // ApiKeyClient instantiates the client with ApiKey Authentication
-func ApiKeyClient(key string, secret string) Client {
+func ApiKeyClient(key string, secret string, passphrase string) Client {
 	c := Client{
 		rpc: rpc{
-			auth: apiKeyAuth(key, secret),
+			auth: apiKeyAuth(key, secret, passphrase),
 			mock: false,
 		},
 	}
@@ -36,8 +36,8 @@ func OAuthClient(tokens *oauthTokens) Client {
 
 // ApiKeyClientTest instantiates Testing ApiKeyClient. All client methods execute
 // normally except responses are returned from a test_data/ file instead of the coinbase API
-func apiKeyClientTest(key string, secret string) Client {
-	c := ApiKeyClient(key, secret)
+func apiKeyClientTest(key string, secret string, passphrase string) Client {
+	c := ApiKeyClient(key, secret, passphrase)
 	c.rpc.mock = true
 	return c
 }
@@ -62,10 +62,23 @@ func (c Client) Put(path string, params interface{}, holder interface{}) error {
 	return c.rpc.Request("PUT", path, params, &holder)
 }
 
+type AccountsResponse struct {
+	accounts []Account
+}
+
+// GetBalance returns current balance in BTC
+func (c Client) GetAccounts() ([]Account, error) {
+	accountsResponse := []Account{}
+	if err := c.Get("/accounts", nil, accountsResponse); err != nil {
+		return nil, err
+	}
+	return accountsResponse, nil
+}
+
 // GetBalance returns current balance in BTC
 func (c Client) GetBalance() (float64, error) {
 	balance := map[string]string{}
-	if err := c.Get("account/balance", nil, &balance); err != nil {
+	if err := c.Get("/account/balance", nil, &balance); err != nil {
 		return 0.0, err
 	}
 	balanceFloat, err := strconv.ParseFloat(balance["amount"], 64)
@@ -78,7 +91,7 @@ func (c Client) GetBalance() (float64, error) {
 // GetReceiveAddress returns clients current bitcoin receive address
 func (c Client) GetReceiveAddress() (string, error) {
 	holder := map[string]interface{}{}
-	if err := c.Get("account/receive_address", nil, &holder); err != nil {
+	if err := c.Get("/account/receive_address", nil, &holder); err != nil {
 		return "", err
 	}
 	return holder["address"].(string), nil
@@ -87,7 +100,7 @@ func (c Client) GetReceiveAddress() (string, error) {
 // GetAllAddresses returns bitcoin addresses associated with client account
 func (c Client) GetAllAddresses(params *AddressesParams) (*addresses, error) {
 	holder := addressesHolder{}
-	if err := c.Get("addresses", params, &holder); err != nil {
+	if err := c.Get("/addresses", params, &holder); err != nil {
 		return nil, err
 	}
 	addresses := addresses{
@@ -103,7 +116,7 @@ func (c Client) GetAllAddresses(params *AddressesParams) (*addresses, error) {
 // GenerateReceiveAddress generates and returns a new bitcoin receive address
 func (c Client) GenerateReceiveAddress(params *AddressParams) (string, error) {
 	holder := map[string]interface{}{}
-	if err := c.Post("account/generate_receive_address", params, &holder); err != nil {
+	if err := c.Post("/account/generate_receive_address", params, &holder); err != nil {
 		return "", err
 	}
 	return holder["address"].(string), nil
@@ -111,12 +124,12 @@ func (c Client) GenerateReceiveAddress(params *AddressParams) (string, error) {
 
 // SendMoney to either a bitcoin or email address
 func (c Client) SendMoney(params *TransactionParams) (*transactionConfirmation, error) {
-	return c.transactionRequest("POST", "send_money", params)
+	return c.transactionRequest("POST", "/send_money", params)
 }
 
 // RequestMoney from either a bitcoin or email address
 func (c Client) RequestMoney(params *TransactionParams) (*transactionConfirmation, error) {
-	return c.transactionRequest("POST", "request_money", params)
+	return c.transactionRequest("POST", "/request_money", params)
 }
 
 func (c Client) transactionRequest(method string, kind string, params *TransactionParams) (*transactionConfirmation, error) {
@@ -128,9 +141,9 @@ func (c Client) transactionRequest(method string, kind string, params *Transacti
 	holder := transactionHolder{}
 	var err error
 	if method == "POST" {
-		err = c.Post("transactions/"+kind, finalParams, &holder)
+		err = c.Post("/transactions/"+kind, finalParams, &holder)
 	} else if method == "PUT" {
-		err = c.Put("transactions/"+kind, finalParams, &holder)
+		err = c.Put("/transactions/"+kind, finalParams, &holder)
 	}
 	if err != nil {
 		return nil, err
@@ -148,7 +161,7 @@ func (c Client) transactionRequest(method string, kind string, params *Transacti
 // ResendRequest resends a transaction request referenced by id
 func (c Client) ResendRequest(id string) (bool, error) {
 	holder := map[string]interface{}{}
-	if err := c.Put("transactions/"+id+"/resend_request", nil, &holder); err != nil {
+	if err := c.Put("/transactions/"+id+"/resend_request", nil, &holder); err != nil {
 		return false, err
 	}
 	if holder["success"].(bool) {
@@ -160,7 +173,7 @@ func (c Client) ResendRequest(id string) (bool, error) {
 // CancelRequest cancels a transaction request referenced by id
 func (c Client) CancelRequest(id string) (bool, error) {
 	holder := map[string]interface{}{}
-	if err := c.Delete("transactions/"+id+"/cancel_request", nil, &holder); err != nil {
+	if err := c.Delete("/transactions/"+id+"/cancel_request", nil, &holder); err != nil {
 		return false, err
 	}
 	if holder["success"].(bool) {
@@ -171,7 +184,7 @@ func (c Client) CancelRequest(id string) (bool, error) {
 
 // CompleteRequest completes a money request referenced by id
 func (c Client) CompleteRequest(id string) (*transactionConfirmation, error) {
-	return c.transactionRequest("PUT", id+"/complete_request", nil)
+	return c.transactionRequest("PUT", "/"+id+"/complete_request", nil)
 }
 
 // CreateButton gets a new payment button including EmbedHtml as a field on button struct
@@ -196,7 +209,7 @@ func (c Client) CreateButton(params *Button) (*Button, error) {
 // CreateOrderFromButtonCode creates an order for a given button code
 func (c Client) CreateOrderFromButtonCode(buttonCode string) (*order, error) {
 	holder := orderHolder{}
-	if err := c.Post("buttons/"+buttonCode+"/create_order", nil, &holder); err != nil {
+	if err := c.Post("/buttons/"+buttonCode+"/create_order", nil, &holder); err != nil {
 		return nil, err
 	}
 	if err := checkApiErrors(holder.response, "CreateOrderFromButtonCode"); err != nil {
@@ -224,7 +237,7 @@ func (c Client) CreateUser(email string, password string) (*user, error) {
 // Buy an amount of BTC and bypass rate limits by setting agreeBtcAmountVaries to true
 func (c Client) Buy(amount float64, agreeBtcAmountVaries bool) (*transfer, error) {
 	params := map[string]interface{}{
-		"qty": amount,
+		"qty":                     amount,
 		"agree_btc_amount_varies": agreeBtcAmountVaries,
 	}
 	holder := transferHolder{}
@@ -269,7 +282,7 @@ func (c Client) GetContacts(params *ContactsParams) (*contactsHolder, error) {
 // GetCurrencies gets all currency names and ISO's
 func (c Client) GetCurrencies() ([]currency, error) {
 	holder := [][]string{}
-	if err := c.Get("currencies", nil, &holder); err != nil {
+	if err := c.Get("/currencies", nil, &holder); err != nil {
 		return nil, err
 	}
 	finalData := []currency{}
@@ -286,7 +299,7 @@ func (c Client) GetCurrencies() ([]currency, error) {
 // GetExchangeRates gets the current exchange rates
 func (c Client) GetExchangeRates() (map[string]string, error) {
 	holder := map[string]string{}
-	if err := c.Get("currencies/exchange_rates", nil, &holder); err != nil {
+	if err := c.Get("/currencies/exchange_rates", nil, &holder); err != nil {
 		return nil, err
 	}
 	return holder, nil
@@ -315,7 +328,7 @@ func (c Client) GetTransactions(page int) (*transactions, error) {
 		"page": page,
 	}
 	holder := transactionsHolder{}
-	if err := c.Get("transactions", params, &holder); err != nil {
+	if err := c.Get("/transactions", params, &holder); err != nil {
 		return nil, err
 	}
 	transactions := transactions{
@@ -334,7 +347,7 @@ func (c Client) GetOrders(page int) (*orders, error) {
 	params := map[string]int{
 		"page": page,
 	}
-	if err := c.Get("orders", params, &holder); err != nil {
+	if err := c.Get("/orders", params, &holder); err != nil {
 		return nil, err
 	}
 	orders := orders{
@@ -353,7 +366,7 @@ func (c Client) GetTransfers(page int) (*transfers, error) {
 		"page": page,
 	}
 	holder := transfersHolder{}
-	if err := c.Get("transfers", params, &holder); err != nil {
+	if err := c.Get("/transfers", params, &holder); err != nil {
 		return nil, err
 	}
 	transfers := transfers{
@@ -381,7 +394,7 @@ func (c Client) getPrice(kind string, qty int) (*pricesHolder, error) {
 		"qty": qty,
 	}
 	holder := pricesHolder{}
-	if err := c.Get("prices/"+kind, params, &holder); err != nil {
+	if err := c.Get("/prices/"+kind, params, &holder); err != nil {
 		return nil, err
 	}
 	return &holder, nil
@@ -390,7 +403,7 @@ func (c Client) getPrice(kind string, qty int) (*pricesHolder, error) {
 // GetTransaction gets a particular transaction referenced by id
 func (c Client) GetTransaction(id string) (*transaction, error) {
 	holder := transactionHolder{}
-	if err := c.Get("transactions/"+id, nil, &holder); err != nil {
+	if err := c.Get("/transactions/"+id, nil, &holder); err != nil {
 		return nil, err
 	}
 	if err := checkApiErrors(holder.response, "GetTransaction"); err != nil {
@@ -402,7 +415,7 @@ func (c Client) GetTransaction(id string) (*transaction, error) {
 // GetOrder gets a particular order referenced by id
 func (c Client) GetOrder(id string) (*order, error) {
 	holder := orderHolder{}
-	if err := c.Get("orders/"+id, nil, &holder); err != nil {
+	if err := c.Get("/orders/"+id, nil, &holder); err != nil {
 		return nil, err
 	}
 	if err := checkApiErrors(holder.response, "GetOrder"); err != nil {
@@ -414,7 +427,7 @@ func (c Client) GetOrder(id string) (*order, error) {
 // GetUser gets the user associated with the authentication
 func (c Client) GetUser() (*user, error) {
 	holder := usersHolder{}
-	if err := c.Get("users", nil, &holder); err != nil {
+	if err := c.Get("/users", nil, &holder); err != nil {
 		return nil, err
 	}
 	return &holder.Users[0].User, nil

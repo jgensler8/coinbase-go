@@ -26,15 +26,21 @@ type rpc struct {
 // The response value is marshaled from JSON into the specified holder struct
 func (r rpc) Request(method string, endpoint string, params interface{}, holder interface{}) error {
 
-	jsonParams, err := json.Marshal(params)
-	if err != nil {
-		return err
+	body := []byte{}
+	// nil slice encodes as the null JSON value, so don't end up with body of "null"
+	if params != nil {
+		var err error
+		body, err = json.Marshal(params)
+		if err != nil {
+			return err
+		}
 	}
 
-	request, err := r.createRequest(method, endpoint, jsonParams)
+	request, err := r.createRequest(method, endpoint, body)
 	if err != nil {
 		return err
 	}
+	log.Printf("request: %v", request)
 
 	var data []byte
 	if r.mock == true { // Mock mode: Replace actual request with expected JSON from file
@@ -53,19 +59,17 @@ func (r rpc) Request(method string, endpoint string, params interface{}, holder 
 }
 
 // CreateRequest formats a request with all the necessary headers
-func (r rpc) createRequest(method string, endpoint string, params []byte) (*http.Request, error) {
-
-	endpoint = r.auth.getBaseUrl() + endpoint //BaseUrl depends on Auth type used
-
-	req, err := http.NewRequest(method, endpoint, bytes.NewBuffer(params))
+func (r rpc) createRequest(method string, endpoint string, body []byte) (*http.Request, error) {
+	u := r.auth.getBaseUrl().String() + endpoint
+	req, err := http.NewRequest(method, u, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
 
 	// Authenticate the request
-	r.auth.authenticate(req, endpoint, params)
+	r.auth.authenticate(req, method, endpoint, body)
 
-	req.Header.Set("User-Agent", "CoinbaseGo/v1")
+	req.Header.Set("User-Agent", "CoinbaseGo/v2")
 	req.Header.Set("Content-Type", "application/json")
 
 	return req, nil
